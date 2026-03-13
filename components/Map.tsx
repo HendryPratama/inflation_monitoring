@@ -2,7 +2,7 @@
 import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 
-export default function JabarMap({ points, onSelect }) {
+export default function JabarMap({ points, onSelect }: { points: any[], onSelect: (region: any) => void }) {
   const getStatusColor = (status: string) => {
     if (status === 'RED') return '#ef4444';
     if (status === 'YELLOW') return '#f59e0b';

@@ -10,12 +10,26 @@ import {
 
 const JabarMap = dynamic(() => import('@/components/Map'), { ssr: false });
 
+interface InflationData {
+  date: string;
+  price: number;
+  rolling_mu: number;
+  rolling_std: number;
+  cusum_value: number;
+  threshold_red: number;
+  threshold_yellow: number;
+  inflation_status: string;
+  kab_kota: string;
+  latitude: number;
+  longitude: number;
+}
+
 export default function Dashboard() {
   // --- STATE UTAMA ---
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard' | 'alerts' | 'data'
-  const [regions, setRegions] = useState([]);
-  const [selected, setSelected] = useState(null);
-  const [history, setHistory] = useState([]);
+  const [regions, setRegions] = useState<InflationData[]>([]);
+  const [selected, setSelected] = useState<InflationData | null>(null);
+  const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
 
@@ -37,7 +51,7 @@ export default function Dashboard() {
     fetchMapData();
   }, [selectedDate]);
 
-  const handleSelectRegion = async (region) => {
+  const handleSelectRegion = async (region: InflationData) => {
     setSelected(region);
     setLoading(true);
     const { data } = await supabase.from('inflation_data')

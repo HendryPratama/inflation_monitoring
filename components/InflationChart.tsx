@@ -4,7 +4,10 @@ import {
   ReferenceLine, Dot
 } from 'recharts';
 
-export default function InflationChart({ history, activeDate }) {
+export default function InflationChart({ history, activeDate}: { 
+                                        history: any[], 
+                                        activeDate: string 
+                                        }) {
   const getColor = (status: string) => {
     if (status === 'RED') return '#ef4444';
     if (status === 'YELLOW') return '#f59e0b';
@@ -46,7 +49,7 @@ export default function InflationChart({ history, activeDate }) {
             type="monotone" 
             dataKey="price" 
             stroke="none" 
-            dot={(props) => {
+            dot={(props: any) => {
               const { cx, cy, payload } = props;
               // Efek Glowing jika titik sama dengan tanggal yang sedang aktif
               const isActive = payload.date === activeDate;
