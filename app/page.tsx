@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import dynamic from 'next/dynamic';
 import InflationChart from '@/components/InflationChart';
@@ -32,20 +32,58 @@ export default function Dashboard() {
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [alertPopup, setAlertPopup] = useState<InflationData | null>(null);
 
-  const dateOptions = useMemo(() => {
-    return Array.from({ length: 14 }, (_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      return d.toISOString().split('T')[0];
-    });
-  }, []);
-  const [selectedDate, setSelectedDate] = useState(dateOptions[0]);
 
+  // State untuk tanggal dinamis dari database
+  const [dateOptions, setDateOptions] = useState<string[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string>('');
+
+  
   // --- LOGIKA FETCHING ---
+
+  // 1. Fetch tanggal yang tersedia di DB saat pertama kali load
   useEffect(() => {
+    const fetchAvailableDates = async () => {
+      const { data, error } = await supabase
+        .from('inflation_data')
+        .select('date')
+        .order('date', { ascending: false }); // Urutkan dari yang terbaru
+      
+      if (error) {
+        console.error("Error fetching dates:", error);
+        return;
+      }
+
+      if (data && data.length > 0) {
+        const uniqueDates = Array.from(new Set(data.map((item) => item.date)));
+        const recentDates = uniqueDates.slice(0, 14);
+        
+        setDateOptions(recentDates);
+        
+        // PERBAIKAN DI SINI:
+        // Set default ke index terakhir (tanggal paling lama/awal dari 14 hari tersebut)
+        setSelectedDate(recentDates[recentDates.length - 1]); 
+      }
+    };
+    fetchAvailableDates();
+  }, []);
+
+  // 2. Fetch data map berdasarkan selectedDate
+  useEffect(() => {
+    // Cegah fetch jika selectedDate belum terisi
+    if (!selectedDate) return; 
+
     const fetchMapData = async () => {
-      const { data } = await supabase.from('inflation_data').select('*').eq('date', selectedDate);
+      const { data, error } = await supabase
+        .from('inflation_data')
+        .select('*')
+        .eq('date', selectedDate);
+        
+      if (error) {
+        console.error("Error fetching map data:", error);
+        return;
+      }
       if (data) setRegions(data);
     };
     fetchMapData();
@@ -54,18 +92,50 @@ export default function Dashboard() {
   const handleSelectRegion = async (region: InflationData) => {
     setSelected(region);
     setLoading(true);
-    const { data } = await supabase.from('inflation_data')
+    const { data, error } = await supabase
+      .from('inflation_data')
       .select('date, price, inflation_status')
-      .eq('kab_kota', region.kab_kota).order('date', { ascending: true });
+      .eq('kab_kota', region.kab_kota)
+      .order('date', { ascending: true });
+      
+    if (error) {
+      console.error("Error fetching history:", error);
+    }
     if (data) setHistory(data);
     setLoading(false);
   };
+  // 3. Logika Animasi Time-lapse (Play/Pause)
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+
+    if (isPlaying && dateOptions.length > 0) {
+      interval = setInterval(() => {
+        setSelectedDate((prevDate) => {
+          const currentIndex = dateOptions.indexOf(prevDate);
+          
+          // Karena dateOptions index 0 adalah yang TERBARU, 
+          // untuk maju ke hari berikutnya kita harus MENGURANGI index
+          if (currentIndex > 0) {
+            return dateOptions[currentIndex - 1]; 
+          } else {
+            // Jika sudah mencapai hari paling baru (index 0), hentikan animasi
+            setIsPlaying(false);
+            return prevDate;
+          }
+        });
+      }, 1500); // Kecepatan pindah hari: 1.5 detik (sesuaikan selera)
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isPlaying, dateOptions]);
 
   // --- COMPONENT: 2. REGION ALERTS (TABLE VIEW) ---
   const AlertsView = () => (
     <div className="flex-1 overflow-y-auto pr-4">
       <div className="grid grid-cols-1 gap-4 mb-8">
-        <h2 className="text-xl font-bold">Priority Ranking - {selectedDate}</h2>
+        <h2 className="text-xl font-bold">Priority Ranking - {selectedDate || 'Loading...'}</h2>
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="border-b border-slate-800 text-slate-500 text-xs uppercase tracking-widest">
@@ -162,11 +232,16 @@ export default function Dashboard() {
                 {isPlaying ? <Pause size={16} fill="currentColor"/> : <Play size={16} fill="currentColor"/>}
               </button>
               <div className="flex gap-1 overflow-x-auto max-w-sm scrollbar-hide">
-                {dateOptions.map(d => (
-                  <button key={d} onClick={() => setSelectedDate(d)} className={`px-3 py-1 rounded-lg text-[10px] font-bold ${selectedDate === d ? 'bg-slate-700 text-emerald-400' : 'text-slate-500'}`}>
-                    {new Date(d).toLocaleDateString('id-ID', {day:'numeric', month:'short'})}
-                  </button>
-                )).reverse()}
+                {dateOptions.length > 0 ? (
+                  // Array dibalik (reverse) agar yang terbaru ada di paling kanan
+                  dateOptions.slice().reverse().map(d => (
+                    <button key={d} onClick={() => setSelectedDate(d)} className={`px-3 py-1 rounded-lg text-[10px] font-bold ${selectedDate === d ? 'bg-slate-700 text-emerald-400' : 'text-slate-500'}`}>
+                      {new Date(d).toLocaleDateString('id-ID', {day:'numeric', month:'short'})}
+                    </button>
+                  ))
+                ) : (
+                  <span className="text-slate-500 text-xs px-4">Memuat tanggal...</span>
+                )}
               </div>
             </div>
           )}
@@ -189,7 +264,12 @@ export default function Dashboard() {
                        Anomali CUSUM terdeteksi pada level {selected.cusum_value.toFixed(2)}. Status: <strong>{selected.inflation_status}</strong>.
                      </div>
                    </div>
-                ) : <p className="text-center text-slate-600 mt-20 italic">Pilih wilayah pada peta</p>}
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-slate-500 gap-4">
+                    <MapIcon size={48} className="opacity-20" />
+                    <p className="text-center italic">Pilih wilayah pada peta untuk melihat detail analitik</p>
+                  </div>
+                )}
               </aside>
             </>
           )}
